@@ -99,13 +99,16 @@ class Signup(BaseHandler):
             self.render('signup-form.html', username=username, email=email, 
                 error_username=error_username, error_pwd=error_pwd, error_verify=error_verify, error_email=error_email)
         else:
+            # redirect to welcome page (get method) with username parameter 
             self.redirect('/blog/welcome?username=' + username)
-        #self.render('signup-form.html')
 
 class Welcome(BaseHandler):
     def get(self):
         username = self.request.get("username")
-        self.render('welcome.html', username=username)
+        if not valid_username(username):
+            self.redirect('/blog/signup')
+        else:
+            self.render('welcome.html', username=username)
 
 app = webapp2.WSGIApplication([
     ('/blog/rot13', Rot13), 
