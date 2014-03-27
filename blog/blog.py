@@ -23,25 +23,27 @@ import re
 # https://www.udacity.com/wiki/cs253/appendix_b
 import jinja2
 
-# from google.appengine.ext import db
+# Google App Engine Datastore
+from google.appengine.ext import db
 
 # create an "environment" using which we can access the templating functions
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir), autoescape=True)
 
 def render_str(template, **params):
-    # retrieve a template object using jinja_environment.get_template
-    t = jinja_env.get_template(template)
-    # render and write out the resulting HTML using template.render(template_values)
-    return t.render(params)
+        # retrieve a template object using jinja_environment.get_template
+        t = jinja_env.get_template(template)
+        # render and write out the resulting HTML using template.render(template_values)
+        return t.render(params)
 
 class BaseHandler(webapp2.RequestHandler):
-    def render(self, template, **kw):
-        self.response.write(render_str(template, **kw))
-
     def write(self, *a, **kw):
-        self.response.write(*a, **kw)
+        self.response.write(*a, **kw)    
 
+    def render(self, template, **kw):
+        self.write(render_str(template, **kw))
+
+    
 class Rot13(BaseHandler):
     def get(self):
         self.render('rot13-form.html')
@@ -110,8 +112,93 @@ class Welcome(BaseHandler):
         else:
             self.render('welcome.html', username=username)
 
+# Art is a datastore table/entity
+class Art(db.Model):
+    # datastore entities 
+    title = db.StringProperty(required=True)
+    art = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+
+class AsciiChan(BaseHandler):
+    def render_front(self, error="", title="", art=""):
+        # make a GQL query and get the cursor pointing to the result
+        arts = db.GqlQuery("SELECT * FROM Art "
+                           "ORDER BY created DESC ")
+        self.render('asciichanfront.html', error=error, title=title, art=art, arts=arts)
+
+    def get(self):
+        self.render_front()
+
+    def post(self):
+        title = self.request.get("title")
+        art = self.request.get("art")
+        if title and art:
+            a = Art(title=title, art=art)
+            a.put() #store it to the datastore
+            self.redirect("/blog/asciichan")
+        else:
+            error = "we need both a title and some artwork!"
+            self.render_front(error=error, title=title, art=art)
+
+class Post(db.Model):
+    subject = db.StringProperty(required=True)
+    content = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+    last_modified = db.DateTimeProperty(auto_now=True)
+
+    def render(self):
+        # render the content by replacing newlines with <br>
+        self._rendered_content = self.content.replace("\n","<br>")
+        return render_str("post.html", post=self)
+
+class Blog(BaseHandler):
+    def render_front(self):
+        posts = db.GqlQuery("SELECT * FROM Post "
+                            "ORDER BY created DESC ")
+        self.render("front.html", posts=posts)
+
+    def get(self):
+        self.render_front()
+
+class NewPost(BaseHandler):
+    def render_newpost(self, error="", subject="", content=""):
+        self.render("newpost.html", error=error, subject=subject, content=content)
+
+    def get(self):
+        self.render_newpost()
+
+    def post(self):
+        subject = self.request.get("subject")
+        content = self.request.get("content")
+        if subject and content:
+            post = Post(subject=subject, content=content)
+            post.put()
+            self.redirect("/blog/%s" % str(post.key().id()))
+        else:
+            error="subject and content, please!"
+            self.render_newpost(error=error, subject=subject, content=content)
+
+class GetPost(BaseHandler):
+    def render_getpost(self, subject="", content=""):
+        self.render("post.html", subject=subject, content=content)
+
+    def get(self, post_id):
+        # get key from post_id
+        key = db.Key.from_path('Post', int(post_id))
+        # get post from key
+        post = db.get(key)
+        if not post:
+            self.error(404)
+            return
+        # pass post to 'permlink.html' and calls post.render()
+        self.render("permalink.html", post=post)
+
 app = webapp2.WSGIApplication([
     ('/blog/rot13', Rot13), 
     ('/blog/signup', Signup),
-    ('/blog/welcome', Welcome)
+    ('/blog/welcome', Welcome),
+    ('/blog/asciichan', AsciiChan),
+    ('/blog', Blog),
+    ('/blog/newpost', NewPost),
+    ('/blog/(\d+)', GetPost), # the number will be passed into get parameter 
 ], debug=True)
