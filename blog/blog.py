@@ -38,7 +38,7 @@ def render_str(template, **params):
 
 class BaseHandler(webapp2.RequestHandler):
     def write(self, *a, **kw):
-        self.response.write(*a, **kw)    
+        self.response.write(*a, **kw)
 
     def render(self, template, **kw):
         self.write(render_str(template, **kw))
@@ -134,7 +134,7 @@ class AsciiChan(BaseHandler):
         art = self.request.get("art")
         if title and art:
             a = Art(title=title, art=art)
-            a.put() #store it to the datastore
+            a.put() #put it into the datastore
             self.redirect("/blog/asciichan")
         else:
             error = "we need both a title and some artwork!"
@@ -193,7 +193,20 @@ class GetPost(BaseHandler):
         # pass post to 'permlink.html' and calls post.render()
         self.render("permalink.html", post=post)
 
+class MainPage(BaseHandler):
+    def get(self):
+        # get the cookie 'visits' and the default is 0 
+        visits = self.request.cookies.get('visits', '0')
+        if visits.isdigit():
+            visits = int(visits) + 1
+        else:
+            visits = 0
+        self.response.headers.add_header('Set-Cookie', 'visits=%s' % visits)
+        self.write("You've been here %s times!" % visits) 
+        
+
 app = webapp2.WSGIApplication([
+    ('/', MainPage),
     ('/blog/rot13', Rot13), 
     ('/blog/signup', Signup),
     ('/blog/welcome', Welcome),
